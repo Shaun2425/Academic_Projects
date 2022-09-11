@@ -1,0 +1,345 @@
+---
+title: "Admission_Type"
+author: 'Shaun Gigy'
+date: '2022-07-26'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+Admission <- read_excel("C:/Users/ASUS/Downloads/RSV-Data-Aggregates.xlsx", sheet = "RSV Spells By Admission Type")
+
+head(Admission)
+
+Admission$`Row Labels` = as.Date(as.yearmon(Admission$`Row Labels`)) # converts to proper date format
+
+Admission$`Row Labels`
+
+
+#----Including missing months-------
+
+
+df20 =  Admission%>%
+  mutate(`Row Labels` = as.Date(`Row Labels`), 
+         Row_Lables = as.Date(format(`Row Labels`, "%Y-%m-01"))) %>%
+  tidyr::complete(Row_Lables = seq(min(Row_Lables), max(Row_Lables), "1 month"))
+
+df20
+
+d_d20 = df20
+
+d_d20
+
+df20 = subset(df20, select= -(`Row Labels`))
+
+df20[is.na(df20)] <- 0
+
+df20 = data.frame(df20)
+
+df20
+
+ts.plot(df20$Emergency)
+
+df20 = subset(df20, select= -(`Elective`))
+
+df20 = subset(df20, select= -(`Maternity`))
+
+df20 = subset(df20, select= -(`Other.Non.Elective`))
+
+df20 = subset(df20, select= -(`Grand.Total`))
+
+df20
+
+
+
+```
+
+
+
+
+```{r}
+#---Plotting the time series-----
+
+
+p20 = ggplot(data = df20, aes(x = Row_Lables, y = Emergency))+ geom_line() + scale_x_date(date_labels = "%b %Y") 
+
+p20  + stat_smooth(color = "#FC4E07",method = "loess")
+
+
+df_ts20<- df20%>% column_to_rownames(., var = 'Row_Lables') # Changing into index
+
+
+df_ts20 =  ts(df_ts20, start=c(2017, 6), end=c(2022, 6), frequency=12) # converting to time series
+
+```
+
+
+
+
+```{r}
+
+#------Model fitting-------
+
+
+#Create samples
+
+training20 = window(df_ts20, start = c(2017,6), end = c(2021,12))
+
+validation20 = window(df_ts20, start = c(2022,1))
+
+ 
+
+#-------SARIMA-----
+
+arima_optimal20 = auto.arima(training20,stepwise=FALSE, approximation=FALSE)
+
+arima_optimal20
+
+
+sarima_forecast20 = sarima.for(training20, n.ahead=length(validation20),
+                             p=1,d=0,q=1,P=1,D=0,Q=0,S=12)
+
+smape(sarima_forecast20$pred, validation20) * 100
+
+
+f_sa20 = forecast(arima_optimal20,length(validation20))
+
+autoplot(f_sa20)
+
+
+
+plot(df_ts20, col="blue", type='l')
+
+lines(sarima_forecast20$pred, col="red", lwd=2)
+
+
+#-------------------Future forecasting-----------------------------
+
+arima_optimal_f20 = auto.arima(df_ts20,stepwise=FALSE, approximation=FALSE)
+
+arima_optimal_f20
+
+
+sarima_forecast_f20 = sarima.for(df_ts20, n.ahead = 7,
+                              p=1,d=0,q=1,P=1,D=0,Q=0,S=12)
+
+f_f20 = forecast(arima_optimal_f20,7)
+
+f_f20
+
+autoplot(f_f20, conf.int.fill='blue') + xlab('Time') + ylab('Emergency') + theme_bw()
+
+ 
+
+r_f20 = data.frame(sarima_forecast_f20$pred)
+
+r_f20
+
+```
+
+
+
+
+```{r}
+#----COVID adjustment for Emergency---------
+
+# Replace the dataset that is impacted by COVID-19 with forecast values of that period.
+
+dataset20 = window(df_ts20, start = c(2017,6), end = c(2020,3))
+
+dataset20
+
+train20 = window(df_ts20, start = c(2017,6), end = c(2019,7))
+
+train20
+
+test20 = window(df_ts20, start = c(2019,8), end = c(2020,3))
+
+test20
+
+
+#Train a neural network model
+
+acf(train20)
+
+pacf(train20)
+
+set.seed(20)
+
+
+neuralnet20 <- nnetar(train20,p = 1, P= 1, hidden = c(2),linear.output=T, lambda = 1)
+
+
+#Generate forecasts with the model
+
+neuralnet20.forecast<- forecast(neuralnet20, h=length(test20))
+
+
+
+#Check the MAPE
+
+smape(neuralnet20.forecast$mean, test20) * 100
+
+
+neuralnet20.forecast$mean
+
+autoplot(neuralnet20.forecast)
+
+
+plot(dataset20, col="blue", type='l')
+
+lines(neuralnet20.forecast$mean, col="red", lwd=2)
+
+```
+
+
+
+
+```{r}
+#--------------Replacement for Emergency------------------------------------------------------
+
+
+#Train a neural network model
+
+set.seed(20)
+
+
+neuralnet21 <- nnetar(dataset20,p = 1, P= 1, hidden = c(2), lambda = 1)
+
+
+#Generate forecasts with the model
+
+neuralnet21.forecast<- forecast(neuralnet21, h= 11)
+
+autoplot(neuralnet21.forecast)
+
+neuralnet21.forecast
+
+dataset20
+
+first21 = ts(dataset20)
+
+# include21 = ts(c(3.758057,3.830388,3.107478,4.036026,5.357084,57.303269,139.794805,170.921768,157.454841,50.968998),
+#              start = c(2020,5), end = c(2021,2), frequency = 12)
+
+
+include21 = ts(c(5.280933,4.709110,4.373521,3.543646,4.549412,5.891914,59.652095,144.719623,203.483044,183.421393,69.973179),
+             start = c(2020,4), end = c(2021,2), frequency = 12)
+
+first21
+
+include21
+
+merged_ts21 <- ts(c(first21, include21),               
+                start = c(2017,6),
+                end = c(2021,2),
+                frequency = 12)
+
+# print merged time series
+merged_ts21
+
+autoplot(merged_ts21)
+
+
+final21 = window(df_ts20, start = c(2021,3), end = c(2022,6))
+
+merged_final21 = ts(c(merged_ts21, final21),               
+                  start = c(2017,6),
+                  end = c(2022,6),
+                  frequency = 12)
+
+
+autoplot(merged_final21)
+
+
+
+```
+
+
+```{r}
+#Create samples
+
+training22= window(merged_final21, start = c(2017,6),
+                  end = c(2021,2),
+                  frequency = 12)
+
+validation22= window(merged_final21, start = c(2021,3), end = c(2022,6))
+
+training22
+
+validation22
+
+
+
+#-------------------------------------------------------------------------------
+# 
+# stl_forecast22 = stlf(training22, h=length(validation22))
+# 
+# autoplot(stl_forecast22)
+# 
+# smape(stl_forecast22$mean, validation22) *100
+# 
+# 
+# plot(merged_final21, col="blue", type='l')
+# 
+# lines(stl_forecast22$mean, col="red", lwd=2)
+
+#-------------------------------------------------------------------------------
+#------TBATS-------
+
+tbats_model22 = tbats(training22)
+
+tbats_forecast22 = forecast(tbats_model22, h=length(validation22))
+
+autoplot(tbats_forecast22)
+
+smape(tbats_forecast22$mean, validation22) * 100
+
+
+
+ 
+
+#-------------------------------------------------------------------------------
+
+# ets_model22 = ets(training22,model="ZZZ" ,allow.multiplicative.trend = TRUE)
+# 
+# summary(ets_model22)
+# 
+# ets_forecast22 = forecast(ets_model22, h=length(validation22))
+# 
+# smape(ets_forecast22$mean, validation22) *100
+
+
+ 
+
+```
+
+
+
+```{r}
+
+#---Forecasting using tbats--------------------
+
+ 
+
+tbats_model23 = tbats(merged_final21)
+
+tbats_forecast23 = forecast(tbats_model23, h= 20)
+
+tbats_forecast23
+
+autoplot(tbats_forecast23,conf.int.fill='blue') + xlab('Time') + ylab('Emergency') + theme_bw()
+
+
+r23 = data.frame(tbats_forecast23$mean)
+
+r23
+
+
+```
+
