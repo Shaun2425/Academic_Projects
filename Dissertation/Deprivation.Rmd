@@ -1,0 +1,263 @@
+---
+title: "Deprivation_data"
+author: 'Shaun Gigy'
+date: '2022-07-15'
+output: html_document
+---
+
+```{r}
+
+Dep <- read_excel("C:/Users/ASUS/Downloads/RSV-Deprivation-Data-v2.xlsx")
+
+head(Dep)
+
+summary(Dep)
+
+nrow(Dep)
+
+sum(Dep$`Index of Multiple Deprivation Decile`=='NULL')  # counting null values
+
+2126/108
+
+D = Dep[Dep$`Index of Multiple Deprivation Decile` != 'NULL', ] 
+
+
+nrow(D)
+
+
+```
+
+
+
+
+
+```{r setup, include=FALSE}
+library(reticulate)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+# library(tidyverse)
+# 
+# library(DBI)
+# con ＜- dbConnect(drv = RSQLite::SQLite(),
+#                  dbname = ":memory:")
+# dbWriteTable(conn = con, 
+#              name = "D",
+#              value = D)
+# 
+# 
+#  tbl(src = con,           #the source of the database connection profile
+#     "D")             #the name of the table to preview
+```
+
+
+
+
+```{r}
+
+#----------- Relabeling----------------
+
+colnames(D)[which(names(D) == "Index of Multiple Deprivation Decile")] <- "IMD"
+
+colnames(D)[which(names(D) == "Health Deprivation and Disability Decile")] <- "HDDC"
+
+head(D)
+
+# x= table(D$`I_MDD`,D$LengthOfSpell)
+# 
+# x1 = data.frame(x)
+# 
+# x1
+# 
+# aggregate(as.numeric(Var2) ~ Var1, x1, sum)
+# 
+# sum(D$LengthOfSpell)
+# 
+# sum(Dep$LengthOfSpell)
+# 
+#  
+# 
+# ggplot(data.frame(x), aes(fill=Var2, x=Var1, y=Freq)) + geom_bar(position="dodge", stat="identity")+ labs(title='Grouped-Barchart')        
+
+```
+
+
+
+
+
+```{sql, connection= con, output.var = 'Results'}
+
+#select I_MDD,AdmissionTime, count(LengthOfSpell) as spell_count from D group by I_MDD ;
+
+```
+
+
+
+
+```{r}
+# Results
+
+# Grouping 'Lenghtofspell' w.r.t 'IMD'
+
+Result = D %>%
+	group_by(IMD) %>%
+	summarise(spell_sum = sum(LengthOfSpell)) %>% ungroup()
+
+
+Result
+
+ggplot(Result, aes(fill=spell_sum, x=IMD, y=spell_sum)) + geom_bar(position="dodge", stat="identity")+ labs(title='Grouped-Barchart') 
+
+D
+
+```
+
+
+
+
+
+```{r}
+
+# ------Grouping 'Lenghtofspell' w.r.t 'IMD'--------------
+
+Result1 = D %>%
+	group_by(IMD) %>%
+	summarise(LengthOfSpell = n()) %>% arrange(IMD) %>% ungroup()
+
+Result1
+
+ggplot(Result1, aes(fill=LengthOfSpell, x=IMD, y=LengthOfSpell)) + geom_bar(position="dodge", stat="identity")+ labs(title='Grouped-Barchart') 
+
+D
+```
+
+
+
+
+```{r}
+
+# Grouping 'Lenghtofspell' w.r.t 'HDDC'
+
+Result2 = D %>%
+	group_by(HDDC) %>%
+	summarise(LengthOfSpell = n()) %>% arrange(HDDC) %>% ungroup()
+
+Result2
+
+ggplot(Result2, aes(fill=LengthOfSpell, x=HDDC, y=LengthOfSpell)) + geom_bar(position="dodge", stat="identity")+ labs(title='Grouped-Barchart') 
+
+
+```
+
+
+
+```{r}
+
+# Grouping 'Lenghtofspell' w.r.t 'HDDC'
+
+Result3 = D %>%
+	group_by(HDDC) %>%
+	summarise(spell_sum = sum(LengthOfSpell)) %>% ungroup()
+
+
+Result3
+
+ggplot(Result3, aes(fill=spell_sum, x=HDDC, y=spell_sum)) + geom_bar(position="dodge", stat="identity")+ labs(title='Grouped-Barchart') 
+
+
+```
+
+
+
+```{r}
+# Results
+# 
+# sum(Results$spell_count)
+# 
+# data.frame(Results)
+# 
+# ggplot(Results, aes(fill=spell_count, x=I_MDD, y=spell_count)) + geom_bar(position="dodge", stat="identity")+ labs(title='Grouped-Barchart')   
+```
+
+
+
+
+
+```{r}
+
+# D[['AdmissionTime']] <- as.POSIXct(D[['AdmissionTime']],
+#                                    format = "%Y-%m-%d %H:%M:%S")
+# 
+# head(D)
+# 
+# 
+# D1 = D
+# 
+# head(D1)
+# 
+# D1$AdmissionTime = as.yearmon(D1$AdmissionTime`) # converts to proper date format
+# 
+# head(D1$AdmissionTime)
+# 
+# D1$month = month(D1$AdmissionTime)
+# 
+# D1
+
+```
+
+
+
+```{r}
+# con ＜- dbConnect(drv = RSQLite::SQLite(),
+#                  dbname = ":memory:")
+# dbWriteTable(conn = con, 
+#              name = "D1",
+#              value = D1)
+# 
+# 
+#  tbl(src = con,           #the source of the database connection profile
+#     "D1")             #the name of the table to preview
+```
+
+
+
+```{sql connection=con, output.var = 'Results1'}
+
+#select I_MDD, date(AdmissionTime), sum(LengthOfSpell) as spell_count from D1 group by month order by I_MDD ;
+
+```
+
+
+```{r}
+# Results1
+# 
+# Results1[['AdmissionTime']] <- as.POSIXct(Results1[['AdmissionTime']],
+#                                    format = "%Y-%m-%d %H:%M:%S")
+```
+
+
+```{r}
+
+# library(magrittr)
+# 
+# D1 %>%
+# 	group_by(month) %>%
+# 	summarise(spell_count = sum(LengthOfSpell)) %>% ungroup()
+# 
+# head(D1)
+# 
+# plot(ts(D1$LengthOfSpell))
+```
+
+
+
+
+ 
+
+
+
+
+
