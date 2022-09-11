@@ -1,0 +1,359 @@
+---
+title: "Age"
+author: 'Shaun Gigy'
+date: '2022-07-27'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+
+#-------- Grouping the age variables into four age-groups ------------------
+
+
+Age <- read_excel("C:/Users/ASUS/Downloads/RSV-Data-Aggregates.xlsx", sheet = "RSV Spells By Age")
+
+Age
+
+nrow(Age)
+
+Age <- Age[, -c(21:39)]
+
+Age_f = Age %>%
+    mutate('1-5' = select(., '< 1 Year':'5 Years') %>% rowSums(na.rm = FALSE))
+
+
+Age_f <- Age_f[, -c(2:7)]
+
+
+Age_f = Age_f %>%
+    mutate('6-15' = select(., '6 Years':'15 Years') %>% rowSums(na.rm = FALSE))
+
+
+Age_f <- Age_f[, -c(2:11)]
+
+
+Age_f <- Age_f[, -c(4)]
+
+
+Age_f
+
+
+
+
+```
+
+
+
+
+```{r}
+
+#------------ total sum for each age group---------------------
+
+
+ bar = Age_f %>%summarise('16_65' = sum(Age_f$`16 - 65 Years`), '65+' = sum(Age_f$`65 +`), '1_5' = sum(Age_f$`1-5`),'6_15' =  sum(Age_f$`6-15`))
+
+bar
+ 
+
+```
+
+
+
+
+```{r}
+
+#------Including missing months-----------
+
+
+Age_f$`Row Labels` = as.Date(as.yearmon(Age_f$`Row Labels`)) # converts to proper date format
+
+Age_f$`Row Labels`
+
+
+df24 =  Age_f%>%
+  mutate(`Row Labels` = as.Date(`Row Labels`), 
+         Row_Lables = as.Date(format(`Row Labels`, "%Y-%m-01"))) %>%
+  tidyr::complete(Row_Lables = seq(min(Row_Lables), max(Row_Lables), "1 month"))
+
+df24
+
+d_d24 = df24
+
+d_d24
+
+df24 = subset(df24, select= -(`Row Labels`))
+
+df24[is.na(df24)] <- 0
+
+df24 = data.frame(df24)
+
+df24
+
+ts.plot(df24$X1.5)
+
+df24 = subset(df24, select= -(`X16...65.Years`))
+
+df24 = subset(df24, select= -(`X65..`))
+
+df24 = subset(df24, select= -(`X6.15`))
+
+df24
+
+```
+
+
+
+
+```{r}
+
+#-----------Plotting the time series---------------
+
+
+install.packages('textshape')
+
+p24 = ggplot(data = df24, aes(x = Row_Lables, y = X1.5))+ geom_line() + scale_x_date(date_labels = "%b %Y") 
+
+p24  + stat_smooth(color = "#FC4E07",method = "loess")
+
+
+df_ts24<- df24%>% column_to_rownames(., var = 'Row_Lables') # Changing into index
+
+
+df_ts24 =  ts(df_ts24, start=c(2017, 6), end=c(2022, 6), frequency=12) # converting to time series
+
+```
+
+
+
+
+```{r}
+
+#-------------Model fitting----------------
+
+
+#Create samples
+
+training24 = window(df_ts24, start = c(2017,6), end = c(2021,12))
+
+validation24 = window(df_ts24, start = c(2022,1))
+
+ 
+
+#--------------SARIMA-------------
+
+
+arima_optimal24 = auto.arima(training24,stepwise=FALSE, approximation=FALSE)
+
+arima_optimal24
+
+
+sarima_forecast24 = sarima.for(training24, n.ahead=length(validation24),
+                             p=2,d=0,q=0,P=1,D=0,Q=0,S=12)
+
+smape(sarima_forecast24$pred, validation24) * 100
+
+
+f_sa24 = forecast(arima_optimal24,length(validation24))
+
+autoplot(f_sa24)
+
+
+
+plot(df_ts24, col="blue", type='l')
+
+lines(sarima_forecast24$pred, col="red", lwd=2)
+
+
+#-------------------Future forecasting using SARIMA-----------------------------
+
+arima_optimal_f24 = auto.arima(df_ts24,stepwise=FALSE, approximation=FALSE)
+
+arima_optimal_f24
+
+
+sarima_forecast_f24 = sarima.for(df_ts24, n.ahead = 7,
+                              p=2,d=0,q=0,P=1,D=0,Q=0,S=12)
+
+f_f24 = forecast(arima_optimal_f24,7)
+
+f_f24
+
+autoplot(f_f24, conf.int.fill='blue') + xlab('Time') + ylab('1-5 Years') + theme_bw()
+
+```
+
+
+
+
+
+```{r}
+
+#------------COVID adjustment for '1_5' age-group -------------------
+
+
+# Replace the data that is impacted by COVID-19 with forecast values of that period.
+
+dataset24 = window(df_ts24, start = c(2017,6), end = c(2020,3))
+
+dataset24
+
+train24 = window(df_ts24, start = c(2017,6), end = c(2019,7))
+
+train24
+
+test24 = window(df_ts24, start = c(2019,8), end = c(2020,3))
+
+test24
+
+
+#Train a neural network model
+
+acf(train24)
+
+pacf(train24)
+
+set.seed(20)
+
+
+neuralnet24 <- nnetar(train24,,p = 1, P= 1, hidden = c(2),linear.output=T, lambda = 1)
+
+
+#Generate forecasts with the model
+
+neuralnet24.forecast<- forecast(neuralnet24, h=length(test24))
+
+
+
+#Check the MAPE
+
+smape(neuralnet24.forecast$mean, test24) * 100
+
+
+neuralnet24.forecast$mean
+
+autoplot(neuralnet24.forecast)
+
+
+plot(dataset24, col="blue", type='l')
+
+lines(neuralnet24.forecast$mean, col="red", lwd=2)
+
+
+
+
+```
+
+
+
+
+```{r}
+
+#--------------Replacement for '1_5' age-group ------------------------------------------------------
+
+
+#Train a neural network model
+
+set.seed(20)
+
+
+neuralnet25 <- nnetar(dataset24,p = 1, P= 1, hidden = c(2),linear.output=T, lambda = 1)
+
+
+#Generate forecasts using the model
+
+neuralnet25.forecast<- forecast(neuralnet25, h= 11)
+
+autoplot(neuralnet25.forecast)
+
+neuralnet25.forecast
+
+dataset24
+
+first25 = ts(dataset24)
+
+include25 = ts(c(4.6989644,-0.2353754,-1.0139628,-3.4539626,-2.0545194,2.7166517,29.2150624,66.8232349,92.2140655,49.3343642,25.8456434),
+             start = c(2020,4), end = c(2021,2), frequency = 12)
+
+first25
+
+include25
+
+merged_ts25 <- ts(c(first25, include25),               
+                start = c(2017,6),
+                end = c(2021,2),
+                frequency = 12)
+
+
+# print merged time-series
+
+merged_ts25
+
+autoplot(merged_ts25)
+
+
+final25 = window(df_ts24, start = c(2021,3), end = c(2022,6))
+
+merged_final25 = ts(c(merged_ts25, final25),               
+                  start = c(2017,6),
+                  end = c(2022,6),
+                  frequency = 12)
+
+
+autoplot(merged_final25)
+
+
+ 
+```
+
+
+
+
+```{r}
+
+#------Forecast using corrected time-series----------------------
+
+
+
+# ets_model27 = ets(merged_final25,model="ZZZ" ,allow.multiplicative.trend = TRUE)
+# 
+# ets_forecast27 = forecast(ets_model27, h= 7)
+# 
+# autoplot(ets_forecast27)
+# 
+# #------TBATS-------
+# 
+# tbats_model27 = tbats(merged_final25)
+# 
+# tbats_forecast27 = forecast(tbats_model27, h=7)
+# 
+# autoplot(tbats_forecast27)
+ 
+#----------------------------------------
+  
+stl_forecast27 = stlf(merged_final25, h= 7)
+
+stl_forecast27
+
+autoplot(stl_forecast27,conf.int.fill='blue') + xlab('Time') + ylab('1-5 Years') + theme_bw()
+
+#------------------------------------------------
+
+# set.seed(20)
+# 
+# 
+# neuralnet27 <- nnetar(merged_final25,p = 1, P= 1, hidden = c(2),linear.output=T, lambda = 1)
+# 
+# 
+# #Generate forecasts with the model
+# 
+# neuralnet27.forecast<- forecast(neuralnet27, h= 10)
+# 
+# plot(neuralnet27.forecast)
+
+```
+
